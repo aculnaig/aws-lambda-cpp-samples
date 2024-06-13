@@ -35,6 +35,7 @@ RUN cmake . -DCMAKE_BUILD_TYPE=Release -DLOG_VERBOSITY=3
 RUN make
 RUN make aws-lambda-package-zimg-api
 
-FROM scratch
+FROM archlinux:latest AS api
 WORKDIR /opt
 COPY --from=builder /opt/zimg-api.zip .
+CMD ["sh"]
