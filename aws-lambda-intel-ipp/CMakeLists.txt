@@ -11,14 +11,14 @@ project(aws-lambda-ipp LANGUAGES CXX)
 
 find_package(aws-lambda-runtime)
 find_package(AWSSDK COMPONENTS core REQUIRED)
-find_package(IPP REQUIRED)
+find_package(IPP COMPONENTS ippi ipps ippcore REQUIRED)
 
 add_executable(${PROJECT_NAME} "main.cpp")
 
 target_link_libraries(${PROJECT_NAME} PUBLIC AWS::aws-lambda-runtime ${AWSSDK_LINK_LIBRARIES})
 if(IPP_FOUND)
   include_directories(${IPP_INCLUDE_DIRS})
-  target_link_libraries(${PROJECT_NAME} PRIVATE ${IPP_LIBRARIES})
+  target_link_libraries(${PROJECT_NAME} PUBLIC ${IPP_LIBRARIES})
 endif()
 
 target_compile_options(${PROJECT_NAME} PRIVATE
