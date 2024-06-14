@@ -8,13 +8,13 @@ using namespace aws::lambda_runtime;
 
 static invocation_response handle_request(invocation_request const& req)
 {
+    using namespace Aws::Utils;
     using namespace Aws::Utils::Json;
 
-    const IppLibraryVersion *lib = ippGetLibVersion();
-    
+    JsonValue payload(req.payload);
+
     JsonValue response;
-    response.WithString("name", lib->Name);
-    response.WithString("version", lib->Version);
+    response.WithString("body", body.View().GetString("body"));
 
     return invocation_response::success(response.View().WriteReadable(false), "application/json; charset=utf-8");
 }
