@@ -14,7 +14,7 @@ static invocation_response handle_request(invocation_request const& req)
     JsonValue payload(req.payload);
 
     JsonValue response;
-    response.WithString("body", body.View().GetString("body"));
+    response.WithString("body", payload.View().GetString("body"));
 
     return invocation_response::success(response.View().WriteReadable(false), "application/json; charset=utf-8");
 }
