@@ -1,4 +1,7 @@
 #include <aws/core/Aws.h>
+#include <aws/core/utils/logging/LogLevel.h>
+#include <aws/core/utils/logging/ConsoleLogSystem.h>
+#include <aws/core/utils/logging/LogMacros.h>
 #include <aws/core/utils/HashingUtils.h>
 #include <aws/core/utils/json/JsonSerializer.h>
 #include <aws/lambda-runtime/runtime.h>
@@ -7,10 +10,14 @@
 
 using namespace aws::lambda_runtime;
 
+char const TAG[] = "LAMBDA_ALLOC";
+
 static invocation_response my_handler(invocation_request const& req)
 {
     using namespace Aws::Utils::Json;
     using namespace Aws::Utils;
+
+    AWS_LOGSTREAM_INFO(TAG, "Parsing JSON body");    
 
     // Decode base64 image
     JsonValue json(req.payload);
@@ -24,6 +31,8 @@ static invocation_response my_handler(invocation_request const& req)
         return invocation_response::failure("Request body is not a string", "InvalidBody"); 
     }
 
+    AWS_LOGSTREAM_INFO(TAG, "Decode Base64 encoded body");    
+
     auto body = HashingUtils::Base64Decode(v.GetString("body"));
     unsigned char *body_buffer = (unsigned char *) body.GetUnderlyingData();
     size_t body_len = body.GetLength();
@@ -36,6 +45,8 @@ static invocation_response my_handler(invocation_request const& req)
     
     unsigned body_buffer_resize_len = dst_w * dst_h * 3;
     unsigned char body_buffer_resize[body_buffer_resize_len];
+
+    AWS_LOGSTREAM_INFO(TAG, "zimg filter graph init");    
 
     // Resize the image by half with zimg library
     zimg_filter_graph *graph = 0;
@@ -78,12 +89,16 @@ static invocation_response my_handler(invocation_request const& req)
     dst_buf.plane[0].stride = dst_w;
     dst_buf.plane[0].mask = ZIMG_BUFFER_MAX;
 
+    AWS_LOGSTREAM_INFO(TAG, "zimg filter graph process");    
+
     zimg_filter_graph_process(graph, &src_buf, &dst_buf, tmp, 0, 0, 0, 0);
 
     zimg_filter_graph_free(graph);
     free(tmp);
 
     Aws::Utils::ByteBuffer body_res(body_buffer_resize, body_buffer_resize_len);
+    
+    AWS_LOGSTREAM_INFO(TAG, "Base64 encoding binary payload");
 
     auto image_encoded = HashingUtils::Base64Encode(body_res);
 
@@ -93,11 +108,22 @@ static invocation_response my_handler(invocation_request const& req)
     return invocation_response::success(res.View().WriteCompact(false), "application/json; charset=utf-8");
 }
 
+std::function<std::shared_ptr<Aws::Utils::Logging::LogSystemInterface>()> GetConsoleLoggerFactory()
+{
+    return [] {
+        return Aws::MakeShared<Aws::Utils::Logging::ConsoleLogSystem>(
+            "console_logger", Aws::Utils::Logging::LogLevel::Trace);
+    };
+}
+
 int main()
 {
     using namespace Aws;
 
     SDKOptions options;
+    options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Trace;
+    options.loggingOptions.logger_create_fn = GetConsoleLoggerFactory();
+
     InitAPI(options);
     {
         run_handler(my_handler);
