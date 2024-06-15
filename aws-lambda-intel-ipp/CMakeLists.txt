@@ -26,7 +26,8 @@ target_compile_options(${PROJECT_NAME} PRIVATE
     "-Wextra"
     "-Wconversion"
     "-Wshadow"
-    "-Wno-sign-conversion")
+    "-Wno-sign-conversion"
+    "-mavx2")
 
 target_compile_features(${PROJECT_NAME} PRIVATE "cxx_std_11")
 

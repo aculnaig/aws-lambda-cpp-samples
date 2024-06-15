@@ -13,10 +13,16 @@ static invocation_response handle_request(invocation_request const& req)
 
     JsonValue payload(req.payload);
 
+    if (payload.View().ValueExists("isBase64Encoded"))
+        if (payload.View().GetBool("isBase64Encoded") == false)
+            return invocation_response::failure("The file is not a JPEG", "InvalidJPEG");
+
     JsonValue response;
+    response.WithInteger("statusCode", 200);
+    response.WithBool("isBase64Encoded", true);
     response.WithString("body", payload.View().GetString("body"));
 
-    return invocation_response::success(response.View().WriteReadable(false), "application/json; charset=utf-8");
+    return invocation_response::success(response.View().WriteReadable(false), "image/jpg");
 }
 
 int main()
