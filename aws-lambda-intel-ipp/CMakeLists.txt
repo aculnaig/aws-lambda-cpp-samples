@@ -11,7 +11,7 @@ project(aws-lambda-ipp LANGUAGES CXX)
 
 find_package(aws-lambda-runtime)
 find_package(AWSSDK COMPONENTS core REQUIRED)
-find_package(IPP COMPONENTS ippi ipps ippcore REQUIRED)
+find_package(IPP REQUIRED)
 
 add_executable(${PROJECT_NAME} "main.cpp")
 
