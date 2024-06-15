@@ -1,73 +1,62 @@
 #include <aws/core/Aws.h>
+#include <aws/core/platform/Environment.h>
+#include <aws/core/utils/HashingUtils.h>
+#include <aws/core/utils/json/JsonSerializer.h>
 #include <aws/core/utils/logging/LogLevel.h>
 #include <aws/core/utils/logging/ConsoleLogSystem.h>
 #include <aws/core/utils/logging/LogMacros.h>
-#include <aws/core/utils/HashingUtils.h>
-#include <aws/core/utils/json/JsonSerializer.h>
+#include <aws/core/utils/memory/AWSMemory.h>
 #include <aws/lambda-runtime/runtime.h>
+#include <aws/logging/logging.h>
 
 #include <zimg.h>
 
 using namespace aws::lambda_runtime;
+using namespace aws::logging;
 
-char const TAG[] = "LAMBDA_ALLOC";
+const char TAG[] = "AWS_LAMBDA_ZIMG_ALLOC";
 
-static invocation_response my_handler(invocation_request const& req)
+// TODO: handle libraries functions errors and return invocation_response::failure
+static invocation_response handle_request(invocation_request const& req)
 {
-    using namespace Aws::Utils::Json;
     using namespace Aws::Utils;
+    using namespace Aws::Utils::Json;
+    using namespace Aws::Utils::Memory;
 
-    AWS_LOGSTREAM_INFO(TAG, "Parsing JSON body");    
+    // AWS API Gateway encodes the payload in base64 if it is binary data
+    // since a Lambda can only receive JSON payloads
 
-    // Decode base64 image
-    JsonValue json(req.payload);
-    if (!json.WasParseSuccessful()) {
-        return invocation_response::failure("Failed to parse input JSON", "InvalidJSON");
-    }
-
-    auto v = json.View();
-
-    if (!v.ValueExists("body")) {
-        return invocation_response::failure("Request body is not a string", "InvalidBody"); 
-    }
-
-    AWS_LOGSTREAM_INFO(TAG, "Decode Base64 encoded body");    
-
-    auto body = HashingUtils::Base64Decode(v.GetString("body"));
-    unsigned char *body_buffer = (unsigned char *) body.GetUnderlyingData();
-    size_t body_len = body.GetLength();
-
-    unsigned src_w = 1920;
-    unsigned src_h = 1080;
-
-    unsigned dst_w = 1920 / 2;
-    unsigned dst_h = 1080 / 2;
+    log_info(TAG, "Decoding Base64 encoded body...");
     
-    unsigned body_buffer_resize_len = dst_w * dst_h * 3;
-    unsigned char body_buffer_resize[body_buffer_resize_len];
+    // Parse the JSON payload and get the body of the HTTP request
+    JsonValue payload(req.payload);
+    auto body = payload.View().GetString("body"); 
+    auto image = HashingUtils::Base64Decode(body);
 
-    AWS_LOGSTREAM_INFO(TAG, "zimg filter graph init");    
-
-    // Resize the image by half with zimg library
+    log_info(TAG, "Initializing zimg structures to defaults...");
+    // Initialize zimg structures to defaults
     zimg_filter_graph *graph = 0;
-	zimg_image_buffer_const src_buf = { ZIMG_API_VERSION };
-	zimg_image_buffer dst_buf = { ZIMG_API_VERSION };
-	zimg_image_format src_format;
-	zimg_image_format dst_format;
-	size_t tmp_size;
-	void *tmp = 0;
+    zimg_image_buffer_const src_buf = { ZIMG_API_VERSION }; 
+    zimg_image_buffer dst_buf = { ZIMG_API_VERSION }; 
+    zimg_image_format src_format;
+    zimg_image_format dst_format;
+    size_t tmp_size;
+    void *tmp = 0;
+    
+    zimg_image_format_default(&src_format, ZIMG_API_VERSION); 
+    zimg_image_format_default(&dst_format, ZIMG_API_VERSION); 
 
-    src_format.width = src_w;
-	src_format.height = src_h;
-	src_format.pixel_type = ZIMG_PIXEL_BYTE;   
+    src_format.width = 1920;
+	src_format.height = 1080;
+	src_format.pixel_type = ZIMG_PIXEL_BYTE;
 
-    src_format.subsample_w = 1;
+	src_format.subsample_w = 1;
 	src_format.subsample_h = 1;
 
-    src_format.color_family = ZIMG_COLOR_YUV;
+	src_format.color_family = ZIMG_COLOR_YUV;
 
-    dst_format.width = dst_w;
-	dst_format.height = dst_h;
+	dst_format.width = 1920 / 2;
+	dst_format.height = 1080 / 2;
 	dst_format.pixel_type = ZIMG_PIXEL_BYTE;
 
 	dst_format.subsample_w = 1;
@@ -79,33 +68,31 @@ static invocation_response my_handler(invocation_request const& req)
 
     zimg_filter_graph_get_tmp_size(graph, &tmp_size);
 
-    tmp = malloc(tmp_size);
+    tmp = Aws::Malloc(TAG, tmp_size);
+    size_t image_resized_buffer_len = (1920 / 2) * (1080 / 2) * 3;
+    ByteBuffer image_resized_buffer(0, image_resized_buffer_len);
 
-    src_buf.plane[0].data = body_buffer;
-    src_buf.plane[0].stride = src_w;
+    src_buf.plane[0].data = static_cast<const void *>(image.GetUnderlyingData());
+    src_buf.plane[0].stride = 1080;
     src_buf.plane[0].mask = ZIMG_BUFFER_MAX;
-    
-    dst_buf.plane[0].data = body_buffer_resize;
-    dst_buf.plane[0].stride = dst_w;
-    dst_buf.plane[0].mask = ZIMG_BUFFER_MAX;
 
-    AWS_LOGSTREAM_INFO(TAG, "zimg filter graph process");    
+    src_buf.plane[0].data = static_cast<const void *>(image_resized_buffer.GetUnderlyingData());
+    src_buf.plane[0].stride = (1080 / 2);
+    src_buf.plane[0].mask = ZIMG_BUFFER_MAX;
 
+    log_info(TAG, "Processing the image...");
     zimg_filter_graph_process(graph, &src_buf, &dst_buf, tmp, 0, 0, 0, 0);
 
     zimg_filter_graph_free(graph);
-    free(tmp);
+    Aws::Free(tmp);
 
-    Aws::Utils::ByteBuffer body_res(body_buffer_resize, body_buffer_resize_len);
+    log_info(TAG, "Base64 encoding the body...");
     
-    AWS_LOGSTREAM_INFO(TAG, "Base64 encoding binary payload");
+    auto body_res = HashingUtils::Base64Encode(image_resized_buffer);
 
-    auto image_encoded = HashingUtils::Base64Encode(body_res);
-
-    JsonValue res;
-    res.WithString("body", image_encoded);
-
-    return invocation_response::success(res.View().WriteCompact(false), "application/json; charset=utf-8");
+    JsonValue response;
+    response.WithString("body", body_res);
+    return invocation_response::success(response.View().WriteCompact(false), "application/json");
 }
 
 std::function<std::shared_ptr<Aws::Utils::Logging::LogSystemInterface>()> GetConsoleLoggerFactory()
@@ -126,7 +113,7 @@ int main()
 
     InitAPI(options);
     {
-        run_handler(my_handler);
+        run_handler(handle_request);
     }
     ShutdownAPI(options);
 
