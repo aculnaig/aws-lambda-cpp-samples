@@ -11,7 +11,6 @@ extern "C" {
     #include <stdlib.h>
     #include <string.h>
     #include <errno.h>
-    #include <execinfo.h>
 }
 
 using namespace Aws;
@@ -19,19 +18,6 @@ using namespace Aws::Utils;
 
 static int read_packet(void *opaque, uint8_t *buf, int buf_size)
 {
-    int nptrs;
-    void *buffer[100];    
-    char **strings;
-
-    nptrs = backtrace(buffer, 100);
-    printf("backtrace() returned %d address(es)\n", nptrs);
-
-    strings = backtrace_symbols(buffer, nptrs);
-    for (size_t i = 0; i < nptrs; i++)
-        printf("%s\n", strings[i]);
-
-    free(strings);
-
     char *blob = (char *) opaque;
     ByteBuffer blob_buffer = HashingUtils::Base64Decode(Aws::String(blob));
     uint8_t *blob_data = (uint8_t *) blob_buffer.GetUnderlyingData();
