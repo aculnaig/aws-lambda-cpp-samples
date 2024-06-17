@@ -3,6 +3,7 @@ set(CMAKE_CXX_STANDARD 11)
 
 project(zimg-api LANGUAGES CXX)
 
+find_package(AWSSDK COMPONENTS core REQUIRED)
 find_package(aws-lambda-runtime REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ZIMG REQUIRED IMPORTED_TARGET zimg)

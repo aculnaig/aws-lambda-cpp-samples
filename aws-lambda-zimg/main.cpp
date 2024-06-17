@@ -53,7 +53,7 @@ static invocation_response handle_request(invocation_request const& req)
 	src_format.subsample_w = 1;
 	src_format.subsample_h = 1;
 
-	src_format.color_family = ZIMG_COLOR_YUV;
+	src_format.color_family = ZIMG_COLOR_GREY;
 
 	dst_format.width = 1920 / 2;
 	dst_format.height = 1080 / 2;
@@ -62,14 +62,14 @@ static invocation_response handle_request(invocation_request const& req)
 	dst_format.subsample_w = 1;
 	dst_format.subsample_h = 1;
 
-	dst_format.color_family = ZIMG_COLOR_YUV;
+	dst_format.color_family = ZIMG_COLOR_GREY;
 
     zimg_filter_graph_build(&src_format, &dst_format, 0);
 
     zimg_filter_graph_get_tmp_size(graph, &tmp_size);
 
     tmp = Aws::Malloc(TAG, tmp_size);
-    size_t image_resized_buffer_len = (1920 / 2) * (1080 / 2) * 3;
+    size_t image_resized_buffer_len = (1920 / 2) * (1080 / 2) * 1;
     ByteBuffer image_resized_buffer(0, image_resized_buffer_len);
 
     src_buf.plane[0].data = static_cast<const void *>(image.GetUnderlyingData());
@@ -91,8 +91,10 @@ static invocation_response handle_request(invocation_request const& req)
     auto body_res = HashingUtils::Base64Encode(image_resized_buffer);
 
     JsonValue response;
+    response.WithInteger("status", 200);
+    response.WithBool("isBase64Encoded", true);
     response.WithString("body", body_res);
-    return invocation_response::success(response.View().WriteCompact(false), "application/json");
+    return invocation_response::success(response.View().WriteCompact(false), "image/jpg");
 }
 
 std::function<std::shared_ptr<Aws::Utils::Logging::LogSystemInterface>()> GetConsoleLoggerFactory()
